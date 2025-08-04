@@ -1,0 +1,579 @@
+---
+title: "Data-Cleaning"
+author: "Abisai Lujan"
+date: "2025-01-25"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) 
+```
+
+```{r}
+GameStats <- read.csv("GameStats.csv")
+```
+
+
+Display column names, variable types, and preview of the data
+```{r}
+names(GameStats)
+```
+**Data Dictionary**
+
+*G*: The nth game played overall (not just conference)
+
+*X*: stats for this school
+
+*X.1*: if empty, the School played at home stadium, otherwise @ means it was an away game
+
+
+*PassCmp*: Number of passes completed 
+
+*PassAtt*: Total number of passes 
+
+*PassPct*: (PassCmp / PassAtt). Pass completion percentage
+
+*PassYds*: Distance, in yards, covered from completed passes
+
+*PassTD*: Number of passes that resulted in a touch down
+
+*RushAtt*: Total number of times the team attempted to run the ball.
+
+*RushYds*: Total yards team gained from the rushes made.  
+
+*RushAvg*: (RushYDs / RushAtt). Total yardage gained from all rushes divided by total number of times team attempted to rush; 
+Average of how many yards were gained per rush attempt. 
+
+*RushTD*: The number of times the team rushed and successfully made a touchdown. 
+
+
+
+*XPM*: Extra points made after touchdowns (i.e., rushing TDs, passing TDs, etc)
+
+*XPA*: Extra points attempted after touchdowns 
+
+*XPPercent*: (XPM/XPA) Percent of extra points after touchdowns successfully made
+
+
+*FGM*: Number of field goals successfully made
+
+*FGA*: Total number of attempted field goal shots 
+
+*FGPercent*: Percent of field goal shots completed
+
+
+*Kickpts*: 
+
+*Fum*:
+
+*Int*: Number of opponent passes that team intercepted 
+
+
+Observe variable types.
+```{r}
+(str(GameStats, give.attr=F))
+```
+
+```{r}
+head(GameStats)
+```
+
+Convert Date into numeric type
+```{r}
+#Change date format
+GameStats$Date=as.Date(GameStats$Date, format="%m/%d/%Y")
+#Numeric format by removing hyphen separators
+GameStats$Date=as.numeric(gsub("-","",GameStats$Date))
+head(GameStats)
+```
+
+Date range of the games
+```{r}
+paste("Start:", min(GameStats$Date), ", End:", max(GameStats$Date))
+```
+
+*Summary*
+```{r}
+#lets take a look at the summary and distribution of the variables
+summary(GameStats)
+```
+
+It is important to note that there are games with incomplete pairs of stats for the home and away team. That is, a game lacks stats for either team. It is also important to note the date of the game, as the choice of home stadium can alter between different games of the same pairing. 
+
+Therefore, any game on the same date must have a row for both teams (i.e., there will be two rows where each team will be listed under `School`)
+
+Lets observe a complete pairing. Georgia State played (at its home stadium) against Charlotte on 9/4/2015. We can see Georgia's performance stats below:
+```{r}
+#Select all rows where the School is Georgia State, the Opponent is Charlotte, and the date is 9/4/15
+home_gs_v_ch <- GameStats[GameStats$School=="Georgia State" 
+                          & GameStats$Opponent=="Charlotte" 
+                          & GameStats$Date==20150904,]
+home_gs_v_ch
+```
+We can see Charlotte's (the away team) performance stats for the same game (9/4/2015) below:
+```{r}
+away_ch_v_gs <- GameStats[GameStats$School=="Charlotte" 
+                          & GameStats$Opponent=="Georgia State" 
+                          & GameStats$Date==20150904,]
+away_ch_v_gs
+```
+We may also see that the away (@) symbol is correctly present in the 4th column of Charlotte's performance stats. 
+
+
+Lets observe a couple of cases where a team's stats are incomplete for a game:
+```{r}
+smu_stats_v_b <- GameStats[GameStats$School=="SMU" 
+                           & GameStats$Opponent=="Baylor" 
+                           & GameStats$Date==20150904,]
+smu_stats_v_b
+```
+```{r}
+bay_stats_v_smu <- GameStats[GameStats$School=="Baylor" 
+                             & GameStats$Opponent=="SMU" 
+                             & GameStats$Date==20150904,]
+bay_stats_v_smu
+```
+Here we can see that SMU's opponent Baylor does not have any stats for their game on 9/4/2015. 
+
+Baylor does have performance stats for games with other teams, we can see all those below:
+```{r}
+#Select all of Baylor's performance stats for any games they played on any date
+bay_stats <- GameStats[GameStats$School=="Baylor",]
+head(bay_stats)
+```
+Baylor is present in both the `School` and `Opponent` lists.
+
+
+
+Therefore, to identify complete pairs, both teams should have their own row, where they are listed as `School` and `Opponent`, and have the same date. 
+
+First, lets assure that a team is present in both the GameStats `School` and `Opponent` lists. 
+```{r}
+#List of all teams in the School column 
+schs <- unique(GameStats$School)
+schs[1:10]
+```
+
+```{r}
+#List of all teams in the Opponent column
+opps <- unique(GameStats$Opponent)
+opps[1:10]
+```
+Take the intersection of the two lists 
+```{r}
+fully_present_teams <- intersect(schs, opps)
+fully_present_teams[1:10]
+```
+Lets test if schools we know to be fully present are in this new list. For example Baylor, Georgia State, and Charlotte
+```{r}
+c("Baylor", "Georgia State", "Charlotte") %in% fully_present_teams
+#Also check if schools we know to not be fully present are in this list
+c("SMU", "Pitt") %in% fully_present_teams
+```
+Now it appears we have all teams are fully present and valid, so I will filter their respective rows into a new data set. 
+```{r}
+valid_GS <- GameStats %>% 
+  filter(School %in% fully_present_teams 
+         & Opponent %in% fully_present_teams)
+head(valid_GS)
+```
+Lets see which teams in the original `School` list are not in the valid data set's `School` list
+```{r}
+#Which elements of x are not in y
+setdiff(GameStats$School, valid_GS$School)
+```
+How much have we reduced the orginal data set of game stats?
+```{r}
+(1- (nrow(valid_GS) / nrow(GameStats))) *100
+```
+We have removed ~20% of the games from the original data set but considering the sample size and the sake of correct pairing, it should be permissible. 
+
+**Merge each game's stats into 1 rows**
+First I believe it would be efficient to split the valid game stats into two sets: home teams and away teams. 
+
+Home teams are those who do not have the @ X-value
+```{r}
+home_teams <- valid_GS %>%
+  filter(X != "@")
+head(home_teams)
+```
+Away teams are those who do not have the "" X-value
+```{r}
+away_teams <- valid_GS %>%
+  filter(X != "")
+head(away_teams)
+```
+There are 8 more rows in home_teams than in away_teams. After manually searching, the extra rows' indicies are (1468,2733,2186, 225, 2881,759, 12, 2951):
+(Baylor vs Liberty),
+ (Florida vs Idaho),
+(fresno state vs idaho),
+(Georgia State vs Liberty),
+(Penn State vs Idaho),
+(Virginia Tech vs Liberty),
+(West Virginia vs Liberty),
+(Wyoming vs Idaho)
+```{r}
+home_teams[c(1468,2733,2186, 225, 2881,759, 12, 2951),1:6]
+```
+
+Lets remove these extra rows to prepare for merging
+```{r}
+home_teams2 <- home_teams[-c(1468,2733,2186, 225, 2881,759, 12, 2951),]
+```
+
+```{r}
+head(home_teams2)[, 1:6]
+```
+
+Next I aim to reorder the home and away team sets to pair them correctly. For home teams I will reorder the rows by X, School, then Date. This way we will see the home teams in alphabetical order, their opponent (away) team, and the dates they played in order. 
+```{r}
+home_reorder <- home_teams2[order(home_teams2$X, home_teams2$School, home_teams2$Date),]
+head(home_reorder)[,1:6]
+```
+For away teams, I will order by X, the opponent (home) teams, then the date of the games. 
+```{r}
+away_reorder <- away_teams[order(away_teams$X, away_teams$Opponent, away_teams$Date),]
+head(away_reorder)[,1:6]
+```
+
+Lets see how the rows line up
+```{r}
+nrow(home_reorder)-nrow(away_reorder)
+nrow(home_reorder) - sum(home_reorder$Date == away_reorder$Date)
+```
+All rows line up and are of equal length 
+
+Now lets merge the data sets 
+```{r}
+GameStats_merged <- cbind(home_reorder, away_reorder)
+head(GameStats_merged)[,1:6]
+```
+
+**Removing neutral field games**
+Rows with X="N" represent neutral field games, which I will remove from the merged data set.
+```{r, eval = FALSE, include = FALSE}
+head(GameStats_merged[2705:length(GameStats_merged$X),])[,1:6]
+GameStats_merged[GameStats_merged$X == "N",]
+```
+
+```{r, eval = FALSE, include=FALSE}
+GSM_no_nf <- length(GameStats_merged[-c(2706:length(GameStats_merged$X)),29] == "N")
+```
+
+
+```{r, eval = FALSE, include = FALSE}
+GSM_no_nf[GSM_no_nf$X=="N",]
+GameStats_merged %>% 
+  filter(X == "N")
+colnames(GameStats_merged)[c(4,29)]
+which(GameStats_merged[,29]=="N")
+```
+
+```{r}
+#First rename the X columns to X.Home and X.Away respectively 
+colnames(GameStats_merged)[4] = "X.Home"
+colnames(GameStats_merged)[29] = "X.Away"
+(colnames(GameStats_merged))
+```
+
+
+```{r}
+#Determine which home team rows played on neutral fields 
+head(GameStats_merged[GameStats_merged$X.Home=="N",])[1:5]
+head(which(GameStats_merged$X.Home=="N"))
+```
+
+
+```{r}
+#Determine which Away team rows played on neutral fields
+head(GameStats_merged[GameStats_merged$X.Away=="N",])[1:5]
+head(which(GameStats_merged$X.Away == "N"))
+```
+
+
+```{r}
+#Determine if the indices for the home team and away team rows on neutral fields 
+#match up
+setdiff(which(GameStats_merged$X.Away=="N"),which(GameStats_merged$X.Home == "N"))
+```
+
+```{r}
+#Filter out games played on neutral fields 
+GSM_no_nf <- GameStats_merged[-which(GameStats_merged$X.Away == "N"),]
+head(GSM_no_nf)
+```
+
+
+**Change variables**
+First three variable names: Date, Home, Away.
+```{r}
+#I have to rename duplicate column names before I can select/modify new data set 
+names(GSM_no_nf)[1] = "Home"
+names(GSM_no_nf)[26] = "Away"
+head(GSM_no_nf)[1:5]
+```
+```{r}
+GSM_3vars <- GSM_no_nf[c(2, 1, 26)]
+head(GSM_3vars)
+```
+
+`HomeWins` variable
+
+I will make a loop to convert Home team's X.1 into binary 1,0 
+```{r}
+home_outcomes <- GSM_no_nf[6]$X.1
+
+for(i in 1:length(home_outcomes)) {
+  if(home_outcomes[i] == "W") {
+    home_outcomes[i] = 1
+  }
+  else if(home_outcomes[i] == "L") {
+    home_outcomes[i] = 0
+  }
+}
+```
+
+```{r}
+#Bind the column of binary outcomes to the right side of the new data set
+GSM4 <- cbind(GSM_3vars, HomeWins = home_outcomes)
+GSM4[1:8,]
+```
+
+Rename team statistics appropriately 
+```{r}
+#Column binding the appropriate columns with the appropriate names
+GSM5 <- cbind(GSM4,
+              HPassCmp = GSM_no_nf[,7],
+              APassCmp = GSM_no_nf[,32],
+              
+              HPassAtt = GSM_no_nf[,8],
+              APassAtt = GSM_no_nf[,33],
+              
+              HPassPct = GSM_no_nf[,9],
+              APassPct = GSM_no_nf[,34],
+              
+              HPassYds = GSM_no_nf[,10],
+              APassYds = GSM_no_nf[,35],
+              
+              HPassTD = GSM_no_nf[,11],
+              APassTD = GSM_no_nf[,36],
+              
+              HRushAtt = GSM_no_nf[,12],
+              ARushAtt = GSM_no_nf[,37],
+              
+              HRushYds = GSM_no_nf[,13],
+              ARushYds = GSM_no_nf[,38],
+              
+              HRushAvg = GSM_no_nf[,14],
+              ARushAvg = GSM_no_nf[,39],
+              
+              HRushTD = GSM_no_nf[,15],
+              ARushTD = GSM_no_nf[,40],
+              
+              HXPM = GSM_no_nf[,16],
+              AXPM = GSM_no_nf[,41],
+              
+              HXPA = GSM_no_nf[,17],
+              AXPA = GSM_no_nf[,42],
+              
+              HXPPercent = GSM_no_nf[,18],
+              AXPPercent = GSM_no_nf[,43],
+              
+              HFGM = GSM_no_nf[,19],
+              AFGM = GSM_no_nf[,44],
+              
+              HFGA = GSM_no_nf[,20],
+              AFGA = GSM_no_nf[,45],
+              
+              HFGPercent = GSM_no_nf[,21],
+              AFGPercent = GSM_no_nf[,46],
+              
+              HKickPts = GSM_no_nf[,22],
+              AKickPts = GSM_no_nf[,47],
+              
+              HFum =  GSM_no_nf[,23],
+              AFum =  GSM_no_nf[,48],
+              
+              HInt =  GSM_no_nf[,24],
+              AInt =  GSM_no_nf[,49],
+              
+              HTotalTO = GSM_no_nf[,25],
+              ATotalTO = GSM_no_nf[,50]
+              )
+```
+
+```{r}
+head(GSM5)[1:8]
+```
+Also check for NA values
+```{r}
+#colSums function loops through each column and sums its number of NA values
+na_counts <- colSums(is.na(GSM5))
+na_counts
+```
+```{r}
+GSM5[which(is.na(GSM5$APassPct)),1:10]
+```
+Since the NA value in row 12 column APassPct results from a divide by 0 error in (APassComp/APassAtt), I will replace it with 0
+```{r}
+GSM5[which(is.na(GSM5$APassPct)),"APassPct"] = 0
+```
+Looks like all the stats that involve percentages are the columns with NA values, if it's a dive by 0 problem I will also convert those NAs to 0.
+
+HXPPercent = (HXPM / HXPA)
+```{r}
+hxpp_nas <- which(is.na(GSM5$HXPPercent))
+head(GSM5[hxpp_nas,c("HXPM", "HXPA", "HXPPercent")])
+GSM5[hxpp_nas,"HXPPercent"]=0
+head(GSM5[hxpp_nas,c("HXPM", "HXPA", "HXPPercent")])
+```
+AXPPercent = (AXPM / AXPA)
+```{r}
+axpp_nas <- which(is.na(GSM5$AXPPercent))
+GSM5[axpp_nas,"AXPPercent"]=0
+head(GSM5[axpp_nas,c("AXPM", "AXPA", "AXPPercent")])
+```
+
+HFGPercent = (HFGM / HFGA)
+```{r}
+hfgp_nas <- which(is.na(GSM5$HFGPercent))
+GSM5[hfgp_nas,"HFGPercent"]=0
+head(GSM5[hfgp_nas, c("HFGM","HFGA", "HFGPercent" ), ])
+```
+AFGPercent = (AFGM / AFGA)
+
+```{r}
+afgp_nas <- which(is.na(GSM5$AFGPercent))
+GSM5[afgp_nas,"AFGPercent"]=0
+head(GSM5[afgp_nas, c("AFGM","AFGA", "AFGPercent" ), ])
+```
+Check for any remaining NA values
+
+```{r}
+colSums(is.na(GSM5))
+```
+
+
+Create new csv for cleaned data 
+```{r}
+write.csv(GSM5, "CleanedGamesStats.csv")
+```
+
+
+```{r}
+head(GSM5)
+```
+
+
+**Data Visualization**
+I will create visualizations for the ACC conference, which include the following schools:
+```{r}
+acc_schools <- c("Clemson", "Duke", "North Carolina", "North Carolina State", "Wake Forest", "Virginia", "Georgia Tech", "Florida State", "Miami (FL)", "Virginia Tech", "Boston College", "Syracuse", "Notre Dame", "Louisville", "California", "Stanford")
+```
+
+
+```{r}
+Cleaned_ACC_Col <- GSM5 %>% 
+  mutate(
+    HomeConference = ifelse(Home %in% acc_schools, "ACC", "Other")) %>% 
+  select(Date, Home, HomeConference, Away, everything()) 
+```
+
+```{r}
+acc_games <- Cleaned_ACC_Col %>% 
+  filter(HomeConference == "ACC")
+```
+
+```{r}
+head(acc_games)
+```
+
+```{r}
+library(dplyr) 
+library(ggplot2)
+```
+
+
+Boxplot of each university's touchdowns in the ACC Conference
+```{r}
+ggplot(acc_games, aes(x = Home, y=HTotalTO)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust=1),
+        plot.title = element_text(hjust = 0.5)) + 
+  labs(title = "ACC Conference Touchdowns by School", 
+       x = "University", 
+       y = "Total Touchdowns") + 
+  scale_y_continuous(breaks = seq(0, 7, by = 1))
+```
+Create new variables. 
+*DiffPassCmp*: How the home team compares in number of passes completed against the away team (home passes - away passes)
+
+*DiffXPM*: How the home team compares in number of extra points made after touchdowns against the away team (home extra points - away extra points)
+
+*DiffTotalTO*: How the home team compares in the number of total touch downs against the away team (HTotalTO - ATotalTO)
+```{r}
+acc_games <- acc_games %>% 
+  mutate(DiffPassCmp = HPassCmp - APassCmp,
+         DiffXPM = HXPM - AXPM,
+         DiffTotalTO = HTotalTO - ATotalTO) %>%
+  select(c(colnames(acc_games)[1:7], 
+           DiffPassCmp,
+           colnames(acc_games)[8:25], 
+           DiffXPM,
+           everything(),
+           DiffTotalTO
+           ))
+head(acc_games)
+```
+Scatter plot and linear regression model predicting the Home Team's Total Touchdown differential by the Home Team's Passes Completed differential
+```{r}
+#Linear regression model
+pass_to_mod <- lm(DiffTotalTO ~ DiffPassCmp, acc_games)
+#Scatter plot
+plot(main = "Home Team Performance in Passes Completed & Total Touchdowns",
+     x = acc_games$DiffPassCmp,
+     y = acc_games$DiffTotalTO,
+     col = c("red", "blue"),
+     pch = 16,
+     xlab = "Passes Completed Differential",
+     ylab = "Total Touchdowns Differential",
+     ylim = c(-8,10))
+legend("topleft", 
+       legend = 
+         c("Home Passes Completed - Away Passes Completed",
+           "Home Total Touchdowns - Away Total Touchdowns"),
+       col = c("red", "blue"),
+       pch = 16)
+axis(side = 2, at = seq(-10, 10), by = 1)
+#Fit linear model
+abline(pass_to_mod, lwd=1.5)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
